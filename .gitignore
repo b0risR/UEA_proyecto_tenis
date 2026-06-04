@@ -1,0 +1,25 @@
+# Data directory (large raw files, not versioned)
+data/
+
+# PDF files
+*.pdf
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Power BI temp files
+*.pbix.lock
