@@ -1,0 +1,452 @@
+# Diccionario de Datos — Tennis Abstract Match Charting Project
+
+**Proyecto:** Scouting táctico Novak Djokovic  
+**Fuente:** JeffSackmann/tennis_MatchChartingProject (CC BY-NC-SA 4.0)  
+**Objetivo:** Documentar granularidad, campos, uso táctico y limitaciones de cada tabla.
+
+---
+
+# `charting-m-matches.csv` — Significado de columnas
+
+**Granularidad:** 1 fila = 1 partido  
+**Filas:** 7.566  
+**Columnas:** 15  
+**Nulos:** 7,56% (concentrados en `Time`, `Court`, `Umpire`)  
+**Duplicados:** 0
+
+---
+
+| Columna | Tipo real | Valores observados | Significado | Notas críticas |
+|---|---|---|---|---|
+| `match_id` | object | `20260521-M-Roland_Garros-Q3-Jesper_D...` | Identificador único del partido. Formato: `AAAAMMDD-M-Torneo-Ronda-Jugador1-Jugador2`. Es la **clave de join** con todas las tablas de estadísticas. | Truncado en pantalla pero completo en el CSV. El campo `M` indica masculino. |
+| `Player 1` | object | `Jesper De Jong`, `Casper Ruud`... | Nombre del jugador que **sacó primero** en el partido. En todo el dataset, Player 1 es siempre el primer servidor. | Para filtrar Djokovic hay que buscarlo en **ambas** columnas Player 1 y Player 2. |
+| `Player 2` | object | `Michael Zheng`, `Jannik Sinner`... | Nombre del jugador que restó primero. | Ídem. |
+| `Pl 1 hand` | object | `R`, `L` | Mano dominante de Player 1. `R` = diestro, `L` = zurdo. | Relevante tácticamente: la dirección del saque wide/T se invierte para zurdos. |
+| `Pl 2 hand` | object | `R`, `L` | Mano dominante de Player 2. | Ídem. |
+| `Date` | object | `20260521`, `20260517`... | Fecha del partido en formato `AAAAMMDD`. Viene como `object` (string), **no como fecha**. Hay que convertirlo a datetime en Power Query. | Primera columna a transformar al cargar en Power BI. |
+| `Tournament` | object | `Roland Garros`, `Rome Masters`, `Madrid Masters`... | Nombre del torneo. Texto libre, puede haber variantes ortográficas del mismo torneo a lo largo de los años. | Revisar consistencia antes de usar como filtro (ej. `US Open` vs `US_Open`). |
+| `Round` | object | `Q3`, `F`, `R16`, `R128`, `SF`, `QF`... | Ronda del torneo. `F`=Final, `SF`=Semifinal, `QF`=Cuartos, `R16/R32/R64/R128`=rondas previas, `Q1/Q2/Q3`=clasificación. | Útil para filtrar partidos de alta presión (F, SF, QF). Las rondas de clasificación (Q) tienen menor relevancia táctica. |
+| `Time` | object | `5pm`, `4:35 PM`, `9pm`, `14:30`, `NaN`... | Hora local de inicio del partido. Formato inconsistente — mezcla 12h, 24h y texto libre. | **Alta tasa de nulos.** No es útil para el análisis táctico. Columna descartable. |
+| `Court` | object | `Centre`, `Santana`, `Paribas`, `7`, `Arantxa Sanchez`, `NaN`... | Nombre o número de la pista donde se jugó. Muy inconsistente: mezcla nombres propios, números y pistas con nombre de patrocinador. | **Alta tasa de nulos.** Valor informativo bajo. Descartable salvo para contextualizar. |
+| `Surface` | object | `Clay`, `Hard`, `Grass` | Superficie de la pista. **Variable más importante** del dataset para segmentación táctica. Valores limpios y consistentes. | **Filtro obligatorio** en todo el informe. Nunca mezclar superficies sin segmentar. |
+| `Umpire` | object | `Renaud Lichtenstein`, `Mohamed Lahyani`, `NaN`... | Nombre del árbitro de silla. | Sin valor táctico. Presencia de nulos frecuente. Columna descartable. |
+| `Best of` | object | `3`, `5` | Número máximo de sets del partido. `3` = mejor de 3 (Masters, ATP 500/250), `5` = mejor de 5 (Grand Slams). | Importante para contextualizar: los patrones de presión en un Grand Slam (5 sets) son distintos a un Masters (3 sets). Viene como `object` aunque es numérico — convertir en Power Query. |
+| `Final TB?` | object | `1`, `A`, `NaN`... | Indica el tipo de desempate en el set decisivo. `1` = tie-break normal a 7 puntos, `A` = super tie-break a 10 puntos (formato ATP moderno en 3er set). | Relevante para análisis de puntos de presión. El valor `A` indica formato diferente al tie-break tradicional. |
+| `Charted by` | object | `stard54`, `Edo`, `BG`, `Ludo`, `Julie DL`... | Alias o nombre del colaborador que registró el partido punto a punto. | **Fuente de sesgo potencial**: distintos chárters pueden tener distintos criterios para clasificar errores forzados/no forzados. Importante mencionarlo en la sección de metodología. |
+
+---
+
+## Columnas recomendadas para el modelo Power BI
+
+| Columna | Acción recomendada |
+|---|---|
+| `match_id` | Mantener — clave de join |
+| `Player 1` | Mantener — filtro de jugador |
+| `Player 2` | Mantener — filtro de jugador |
+| `Pl 1 hand` | Mantener — contexto táctico |
+| `Pl 2 hand` | Mantener — contexto táctico |
+| `Date` | Mantener y **convertir a fecha** en Power Query |
+| `Tournament` | Mantener — normalizar texto (trim, mayúsculas) |
+| `Round` | Mantener — crear columna derivada de peso de ronda |
+| `Surface` | Mantener — **filtro obligatorio** |
+| `Best of` | Mantener y convertir a entero |
+| `Final TB?` | Mantener — contexto de presión |
+| `Charted by` | Mantener como referencia de sesgo — no usar como filtro analítico |
+| `Time` | **Descartar** — nulos altos, formato inconsistente, sin valor táctico |
+| `Court` | **Descartar** — nulos altos, muy inconsistente |
+| `Umpire` | **Descartar** — sin valor táctico |
+
+---
+
+*Fuente: output de `dfs["matches"].head(10)` y `dfs["matches"].dtypes` ejecutados en `01_exploracion_inicial.ipynb`.*  
+*Datos: JeffSackmann/tennis_MatchChartingProject — CC BY-NC-SA 4.0*
+
+---
+---
+
+# `charting-m-stats-Overview.csv` — Significado de columnas
+
+**Granularidad:** 1 fila = 1 jugador × 1 set (incluyendo fila `Total`)  
+**Filas:** 56.850 | **Columnas:** 20 | **Nulos:** 0 | **Duplicados:** 56  
+**Clave de join:** `match_id` + `player` + `set`
+
+---
+
+## Nota estructural crítica
+
+La columna `set` subdivide cada partido. Por cada partido y jugador hay múltiples filas: una fila `Total` (partido completo) y una fila por cada set jugado (`1`, `2`, `3`...). La granularidad real es **jugador × set**. Al filtrar en Power BI siempre habrá que decidir si se usa `Total` o el desglose por set.
+
+---
+
+## Columnas
+
+| Columna | Tipo real | Valores observados | Significado | Notas críticas |
+|---|---|---|---|---|
+| `match_id` | object | `20260521-M-Roland_Garros-Q3-Jesper_D...` | Clave de join con `matches`. | Igual que en todas las tablas de estadísticas. |
+| `player` | object | `Jesper De Jong`, `Michael Zheng`... | Nombre completo del jugador al que pertenece la fila. | **Atención:** es nombre completo, no entero `1` o `2`. Para filtrar Djokovic se filtra directamente por nombre. Verificar consistencia ortográfica en toda la tabla. |
+| `set` | object | `Total`, `1`, `2`, `3`... | Indica si la fila es el agregado del partido completo (`Total`) o un set específico. | **Filtro obligatorio** al usar esta tabla. Para el informe táctico general usar `set = "Total"`. Para análisis de evolución dentro del partido usar los sets individuales. |
+| `serve_pts` | int64 | `80`, `61`, `52`... | Total de puntos jugados al saque por este jugador en este set/partido. Denominador base para `% puntos ganados al saque`. | `serve_pts` de Player 1 = `return_pts` de Player 2 en el mismo partido y set, y viceversa. |
+| `aces` | int64 | `6`, `3`, `2`, `0`... | Número de aces realizados. Saques que el restador no tocó y que entraron en zona válida. | Contribuye a los puntos ganados al saque pero no aparece desglosado dentro de `first_won` o `second_won` en esta tabla — para eso está ServeBasics. |
+| `dfs` | int64 | `4`, `2`, `1`, `0`... | Dobles faltas. Pérdida directa de punto al fallar dos saques consecutivos. | Nótese el nombre `dfs` (plural). La columna equivalente en ServeBasics también se llama `dfs`. |
+| `first_in` | int64 | `48`, `34`, `32`... | Primeros saques que entraron en zona válida. Numerador para `% 1er saque dentro` = `first_in / serve_pts`. | Incluye tanto los puntos ganados como los perdidos con primer saque dentro. |
+| `first_won` | int64 | `33`, `27`, `22`... | Puntos ganados cuando el primer saque entró. `first_won / first_in` = `% puntos ganados con 1S`. | KPI táctico directo. Un ratio alto indica que el primer saque genera ventaja inmediata. |
+| `second_in` | int64 | `32`, `27`, `20`... | Segundos saques que entraron (sin contar dobles faltas). | `second_in + dfs` ≈ `serve_pts - first_in` (los puntos donde el primer saque fue falta). |
+| `second_won` | int64 | `13`, `16`, `8`... | Puntos ganados cuando el segundo saque entró. `second_won / second_in` = `% puntos ganados con 2S`. | La caída entre `first_won/first_in` y `second_won/second_in` mide la **vulnerabilidad del segundo saque** — una de las preguntas clave del ejercicio. |
+| `bk_pts` | int64 | `11`, `3`, `7`... | Break points afrontados por el servidor en ese set/partido. Número de veces que el restador tuvo oportunidad de romper el saque. | Nombre poco intuitivo (`bk_pts` = break points faced). No confundir con break points convertidos. |
+| `bp_saved` | int64 | `8`, `3`, `6`... | Break points salvados por el servidor. `bp_saved / bk_pts` = `% BP salvados`. | KPI de presión al saque. Djokovic históricamente es uno de los mejores salvando break points. |
+| `return_pts` | int64 | `61`, `80`, `34`... | Total de puntos jugados al resto. Es el espejo de `serve_pts` del rival en ese partido y set. | `return_pts` (Player 1) = `serve_pts` (Player 2) en el mismo match y set. |
+| `return_pts_won` | int64 | `18`, `34`, `9`... | Puntos ganados al resto. `return_pts_won / return_pts` = `% puntos ganados al resto`. | KPI táctico fundamental. Junto con `serve_pts_won / serve_pts` forma los dos grandes indicadores de rendimiento por partido. |
+| `winners` | int64 | `25`, `28`, `18`... | Golpes ganadores directos totales, **excluyendo aces y saques directos**. Solo golpes de rally que terminaron el punto sin que el rival tocara la bola. | La suma `winners + aces` da el total de golpes ganadores incluyendo saque. |
+| `winners_fh` | int64 | `13`, `23`, `8`... | Winners de forehand (derecha). Subconjunto de `winners`. | Permite evaluar si el jugador es más ganador por derecha o por revés. |
+| `winners_bh` | int64 | `5`, `2`, `3`... | Winners de backhand (revés). Subconjunto de `winners`. `winners_fh + winners_bh` = `winners`. | La proporción fh/bh es un indicador del perfil táctico del jugador. |
+| `unforced` | int64 | `25`, `21`, `13`... | Errores no forzados totales. Golpes fallados sin presión aparente del rival. | **Indicador principal de consistencia.** El ratio `unforced / (winners + unforced)` alto indica jugador agresivo pero poco consistente. |
+| `unforced_fh` | int64 | `15`, `11`, `7`... | Errores no forzados de forehand. Subconjunto de `unforced`. | Identifica el lado más propenso al error. Útil para decidir hacia dónde construir el punto contra este jugador. |
+| `unforced_bh` | int64 | `6`, `8`, `4`... | Errores no forzados de backhand. Subconjunto de `unforced`. `unforced_fh + unforced_bh` = `unforced`. | Ídem pero por revés. |
+
+---
+
+## Medidas DAX derivables directamente de esta tabla
+
+Estas son las medidas del ejercicio que se pueden calcular **solo con Overview + matches**:
+
+```
+% Puntos ganados al saque  = DIVIDE( SUM(first_won) + SUM(second_won), SUM(serve_pts) )
+% Puntos ganados al resto  = DIVIDE( SUM(return_pts_won), SUM(return_pts) )
+% 1er saque dentro         = DIVIDE( SUM(first_in),   SUM(serve_pts) )
+% Ganados con 1S           = DIVIDE( SUM(first_won),  SUM(first_in) )
+% Ganados con 2S           = DIVIDE( SUM(second_won), SUM(second_in) )
+% BP salvados              = DIVIDE( SUM(bp_saved),   SUM(bk_pts) )
+Ratio winners / UFE        = DIVIDE( SUM(winners),    SUM(unforced) )
+```
+
+> **Nota:** `serve_pts_won` no existe como columna explícita en Overview. Hay que calcularlo como `first_won + second_won`. En ServeBasics sí existe como columna directa.
+
+---
+
+## Hallazgos importantes
+
+**1. `player` contiene el nombre completo, no un entero.**  
+Se asumía que sería `1` o `2`, pero el campo contiene el nombre del jugador directamente. Esto simplifica el filtro de Djokovic pero obliga a verificar consistencia ortográfica en toda la tabla (sin variantes ni abreviaciones).
+
+**2. No existe columna `pts_won` explícita.**  
+Para calcular el total de puntos ganados al saque hay que sumar `first_won + second_won`. No está precalculado en esta tabla.
+
+**3. Los 56 duplicados requieren investigación.**  
+Con granularidad `match_id + player + set` no deberían existir duplicados. Pueden ser partidos re-charteados por distintos colaboradores o errores de carga. Hay que identificarlos y eliminarlos antes de modelar en Power BI.
+
+---
+
+## Columnas recomendadas para el modelo Power BI
+
+| Columna | Acción recomendada |
+|---|---|
+| `match_id` | Mantener — clave de join |
+| `player` | Mantener — filtro de jugador por nombre |
+| `set` | Mantener — **filtrar por `Total`** para análisis de partido completo |
+| `serve_pts` | Mantener — denominador saque |
+| `aces` | Mantener — KPI saque |
+| `dfs` | Mantener — KPI riesgo saque |
+| `first_in` | Mantener — numerador % 1S dentro |
+| `first_won` | Mantener — KPI rendimiento 1S |
+| `second_in` | Mantener — denominador % 2S |
+| `second_won` | Mantener — KPI rendimiento 2S |
+| `bk_pts` | Mantener — denominador % BP salvados |
+| `bp_saved` | Mantener — KPI presión al saque |
+| `return_pts` | Mantener — denominador resto |
+| `return_pts_won` | Mantener — KPI rendimiento al resto |
+| `winners` | Mantener — agresividad |
+| `winners_fh` | Mantener — perfil táctico fh/bh |
+| `winners_bh` | Mantener — perfil táctico fh/bh |
+| `unforced` | Mantener — consistencia |
+| `unforced_fh` | Mantener — lado débil |
+| `unforced_bh` | Mantener — lado débil |
+
+---
+
+*Fuente: output de `dfs["overview"].head(10)` y `dfs["overview"].dtypes` ejecutados en `01_exploracion_inicial.ipynb`.*  
+*Datos: JeffSackmann/tennis_MatchChartingProject — CC BY-NC-SA 4.0*
+
+---
+
+---
+
+# `charting-m-stats-ServeBasics.csv` — Significado de columnas
+
+**Granularidad:** 1 fila = 1 jugador × 1 tipo de saque (Total, 1S, 2S)  
+**Filas:** 45.341 | **Columnas:** 12 | **Nulos:** 0 | **Duplicados:** 47  
+**Clave de join:** `match_id` + `player` + `row`
+
+---
+
+## Nota estructural crítica
+
+La columna `row` tiene tres valores: `Total`, `1` (primer saque) y `2` (segundo saque). Esto significa que por cada jugador y partido hay **3 filas**, no 1. La granularidad real es **jugador × tipo de saque**, no jugador × partido como se asumía inicialmente. Para métricas globales de saque usar `row = "Total"`. Para comparar rendimiento de 1S vs 2S usar `row = "1"` y `row = "2"` por separado.
+
+---
+
+## Columnas
+
+| Columna | Tipo real | Valores observados | Significado | Notas críticas |
+|---|---|---|---|---|
+| `match_id` | object | `20260521-M-Roland_Garros-Q3-Jesper_D...` | Clave de join con `matches`. | Igual que en todas las tablas. |
+| `player` | object | `Jesper De Jong`, `Michael Zheng`... | Nombre completo del jugador. | Mismo patrón que Overview — nombre completo, no entero. Filtrar Djokovic por nombre. |
+| `row` | object | `Total`, `1`, `2` | Tipo de saque al que corresponde la fila. `Total` = ambos saques combinados, `1` = solo primer saque, `2` = solo segundo saque. | **Filtro obligatorio.** Para la mayoría de análisis usar `Total`. Para comparar caída de rendimiento 1S→2S usar las filas `1` y `2` por separado. |
+| `pts` | int64 | `80`, `48`, `32`... | Total de puntos al saque en ese contexto (`row`). Cuando `row = "Total"` equivale a `serve_pts` de Overview. Denominador global. | Verificar: `pts(row=1) + pts(row=2) + dfs ≈ pts(row=Total)`. Las dobles faltas son puntos al saque que no generan ni primer ni segundo saque "dentro". |
+| `pts_won` | int64 | `46`, `33`, `13`... | Puntos ganados al saque en ese contexto. `pts_won / pts` = `% puntos ganados al saque` (global o por tipo). | **KPI principal del saque.** Cuando `row = "Total"` equivale a `first_won + second_won` de Overview. |
+| `aces` | int64 | `6`, `6`, `0`... | Aces en ese contexto. Un ace siempre ocurre en el primer saque, por lo que cuando `row = "2"` el valor es siempre `0`. | Permite confirmar que los aces están correctamente asignados al primer saque. |
+| `unret` | int64 | `1`, `1`, `0`... | Saques no devueltos que **no son aces** — el restador intentó devolverlo pero no logró contacto limpio o no llegó a tiempo. `aces + unret` = total de saques directos (puntos ganados antes del primer golpe de fondo). | Diferencia importante con `aces`: el restador hizo algún movimiento pero no consiguió contacto. En análisis de presión sobre el resto, `unret` es más relevante que `aces` porque indica que el saque fue difícil de leer. |
+| `forced_err` | int64 | `9`, `7`, `2`... | Errores forzados del restador en el primer o segundo golpe del rally inmediatamente tras el saque. El saque fue tan bueno que forzó un error inmediato. | Distinto de `unret` — aquí el restador sí devolvió pero el saque forzó un error en el golpe siguiente. Junto con `aces + unret` forma el bloque de **influencia directa del saque** en el punto. |
+| `pts_won_lte_3_shots` | int64 | `22`, `17`, `5`... | Puntos ganados en 3 golpes o menos (saque + hasta 2 golpes más). Indica cuántos puntos se resolvieron muy rápido gracias al saque. | Columna exclusiva de ServeBasics — no existe en Overview. Útil para el Rally length chart: estos puntos caen en el bucket `1_3` de la tabla Rally. Permite cruzar ambas tablas para validar consistencia. |
+| `wide` | int64 | `27`, `18`, `9`... | Saques dirigidos hacia el exterior de la pista (zona wide) en ese contexto. Agrega deuce_wide + ad_wide sin distinción de lado. | **Atención:** para el heatmap por lado hay que ir a ServeDirection. Aquí solo sirve para conocer la preferencia global por zona. |
+| `body` | int64 | `5`, `1`, `4`... | Saques dirigidos al cuerpo del restador. Generalmente menos frecuentes pero efectivos para bloquear el revés. Agrega deuce_body + ad_body. | Ídem — sin distinción de lado deuce/ad. |
+| `t` | int64 | `48`, `29`, `19`... | Saques dirigidos hacia la línea T (centro). La zona más frecuente en muchos jugadores porque genera ángulo y velocidad. Agrega deuce_t + ad_t. | Verificar: `wide + body + t` debería aproximarse a los saques que entraron dentro en ese contexto. |
+
+---
+
+## Relaciones entre columnas — verificaciones útiles
+
+Estas identidades permiten detectar errores en los datos antes de modelar en Power BI:
+
+```
+# Consistencia de dirección vs total de saques dentro
+wide + body + t  ≈  pts(row="1")    [primer saque dentro]
+wide + body + t  ≈  pts(row="2")    [segundo saque dentro]
+
+# Consistencia con Overview (cuando row="Total")
+pts      ↔  serve_pts              (Overview)
+pts_won  ↔  first_won + second_won (Overview)
+aces     ↔  aces                   (Overview)
+```
+
+---
+
+## Medidas DAX derivables de esta tabla
+
+```dax
+-- Usando row = "Total"
+% Puntos ganados al saque    = DIVIDE( SUM(pts_won), SUM(pts) )
+
+-- Comparando row = "1" vs row = "2"
+% Ganados con 1S             = DIVIDE( SUM(pts_won) [row=1], SUM(pts) [row=1] )
+% Ganados con 2S             = DIVIDE( SUM(pts_won) [row=2], SUM(pts) [row=2] )
+Caída 1S → 2S                = [% Ganados con 1S] - [% Ganados con 2S]
+
+-- Influencia directa del saque
+% Puntos resueltos en ≤3     = DIVIDE( SUM(pts_won_lte_3_shots), SUM(pts) )
+% Saques directos            = DIVIDE( SUM(aces) + SUM(unret), SUM(pts) )
+
+-- Dirección global (sin distinción deuce/ad)
+% Saques al T                = DIVIDE( SUM(t),    SUM(wide) + SUM(body) + SUM(t) )
+% Saques wide                = DIVIDE( SUM(wide), SUM(wide) + SUM(body) + SUM(t) )
+% Saques al cuerpo           = DIVIDE( SUM(body), SUM(wide) + SUM(body) + SUM(t) )
+```
+
+---
+
+## Hallazgos importantes
+
+**1. La separación 1S/2S se hace mediante la columna `row`, no mediante columnas separadas.**
+
+**2. Tres columnas no documentadas con alto valor táctico.**  
+`forced_err`, `pts_won_lte_3_shots` y `unret` aportan información sobre la influencia directa del saque en el desarrollo del punto — una dimensión táctica que Overview no captura.
+
+**3. Las columnas `wide`, `body`, `t` son agregadas.**  
+No distinguen lado deuce de lado ad. Para el heatmap de dirección de saque por lado de la pista hay que usar ServeDirection, que sí tiene `deuce_wide`, `deuce_t`, `ad_wide`, `ad_t`, etc.
+
+**4. Los 47 duplicados coinciden en número con los de ServeDirection** (también 47). Probablemente corresponden a los mismos partidos duplicados. Investigar con `match_id` para confirmar y eliminar antes de modelar en Power BI.
+
+---
+
+## Columnas recomendadas para el modelo Power BI
+
+| Columna | Acción recomendada |
+|---|---|
+| `match_id` | Mantener — clave de join |
+| `player` | Mantener — filtro de jugador por nombre |
+| `row` | Mantener — **filtrar por `Total`** para análisis global; usar `1`/`2` para comparativa 1S vs 2S |
+| `pts` | Mantener — denominador global saque |
+| `pts_won` | Mantener — **KPI principal** |
+| `aces` | Mantener — KPI dominancia al saque |
+| `unret` | Mantener — influencia directa del saque |
+| `forced_err` | Mantener — influencia directa del saque |
+| `pts_won_lte_3_shots` | Mantener — conexión con análisis de rally length |
+| `wide` | Mantener como referencia global — para heatmap usar ServeDirection |
+| `body` | Mantener como referencia global — ídem |
+| `t` | Mantener como referencia global — ídem |
+
+---
+
+*Fuente: output de `dfs["serve_basics"].head(10)` y `dfs["serve_basics"].dtypes` ejecutados en `01_exploracion_inicial.ipynb`.*  
+*Datos: JeffSackmann/tennis_MatchChartingProject — CC BY-NC-SA 4.0*
+
+---
+---
+
+# `charting-m-stats-ServeDirection.csv` — Significado de columnas
+
+**Granularidad:** 1 fila = 1 jugador × 1 tipo de saque (Total, 1S, 2S)  
+**Filas:** 45.341 | **Columnas:** 15 | **Nulos:** 0 | **Duplicados:** 47  
+**Clave de join:** `match_id` + `player` + `row`
+
+---
+
+## Nota estructural
+
+Igual que ServeBasics, la columna `row` toma los valores `Total`, `1` y `2`, generando 3 filas por jugador y partido. La tabla tiene **dos bloques de columnas con lógica completamente distinta:**
+
+- **Bloque de saques dentro** (`deuce_wide`, `deuce_middle`, `deuce_t`, `ad_wide`, `ad_middle`, `ad_t`): cuentan saques que **entraron** en zona válida, desglosados por lado de pista y dirección.
+- **Bloque de errores de saque** (`err_net`, `err_wide`, `err_deep`, `err_wide_deep`, `err_foot`, `err_unknown`): cuentan saques que **fallaron**, desglosados por tipo de error.
+
+Cuando `row = "1"` los errores son faltas de primer saque (sin consecuencia inmediata). Cuando `row = "2"` los errores son **dobles faltas** — pérdida directa de punto. Esta distinción es crítica para el análisis de riesgo al saque.
+
+Una segunda diferencia importante respecto al diccionario previo: la zona central se llama `middle` aquí, no `body`. Son conceptos distintos — `body` en ServeBasics es dirección al cuerpo del rival, `middle` en ServeDirection es la zona geométrica central del cuadro de servicio.
+
+---
+
+## Columnas
+
+| Columna | Tipo real | Valores observados | Significado | Notas críticas |
+|---|---|---|---|---|
+| `match_id` | object | `20260521-M-Roland_Garros-Q3-Jesper_D...` | Clave de join con `matches`. | Igual que en todas las tablas. |
+| `player` | object | `Jesper De Jong`, `Michael Zheng`... | Nombre completo del jugador. | Filtrar Djokovic por nombre. |
+| `row` | object | `Total`, `1`, `2` | Tipo de saque. `Total` = ambos saques combinados, `1` = primer saque, `2` = segundo saque. | **Filtro obligatorio.** Para el heatmap de dirección usar `row = "1"` y `row = "2"` por separado — la táctica de dirección cambia entre primer y segundo saque. |
+| `deuce_wide` | int64 | `8`, `6`, `2`... | Saques dirigidos al exterior (wide) desde el lado deuce que **entraron** en zona válida. El lado deuce es el lado derecho de la pista — puntos pares (0-0, 30-0, 0-30, 40-40). Para un diestro, wide en deuce va al backhand del rival diestro. | **Columna central del heatmap.** Para Djokovic diestro: wide en deuce ataca el revés del rival. |
+| `deuce_middle` | int64 | `1`, `1`, `0`... | Saques dirigidos a la zona central del cuadro de servicio desde el lado deuce que entraron. Va aproximadamente al cuerpo del rival. | No confundir con `body` de ServeBasics. Aquí `middle` es una zona geométrica del cuadro, no necesariamente al cuerpo. Frecuencia baja — es la zona menos usada. |
+| `deuce_t` | int64 | `33`, `18`, `15`... | Saques dirigidos a la línea T (centro de la red) desde el lado deuce que entraron. Para un diestro en deuce, el T va al forehand del rival diestro. | Suele ser la zona más frecuente en deuce para jugadores diestros porque genera ángulo y velocidad. |
+| `ad_wide` | int64 | `19`, `12`, `7`... | Saques dirigidos al exterior desde el lado ad que entraron. El lado ad es el lado izquierdo — puntos impares (15-0, 0-15, 40-30, 30-40). Para un diestro, wide en ad va al forehand del rival diestro. | En puntos de break point desde el lado ad, muchos jugadores optan por wide al forehand del rival para evitar el revés de Djokovic. |
+| `ad_middle` | int64 | `4`, `0`, `4`... | Saques a la zona central desde el lado ad que entraron. | Frecuencia muy baja. Zona de uso táctico puntual. |
+| `ad_t` | int64 | `15`, `11`, `4`... | Saques a la línea T desde el lado ad que entraron. Para un diestro en ad, el T va al backhand del rival diestro. | En ad, sacar al T es atacar el revés del rival — táctica habitual en puntos clave. |
+| `err_net` | int64 | `16`, `0`, `16`... | Saques que golpearon la red. Tipo de error más común en primer saque al intentar mayor potencia. | Cuando `row = "1"` este campo es siempre `0` — las faltas de primer saque no se registran aquí. Solo aparecen en `row = "2"` (doble falta) y `row = "Total"`. |
+| `err_wide` | int64 | `6`, `0`, `6`... | Saques que salieron por el lateral (fuera del cuadro de servicio lateralmente). | Ídem — solo relevante en `row = "2"` y `Total`. |
+| `err_deep` | int64 | `11`, `0`, `11`... | Saques que salieron largos (fuera del cuadro de servicio por el fondo). | Ídem. |
+| `err_wide_deep` | int64 | `3`, `0`, `3`... | Saques que salieron tanto laterales como largos simultáneamente. Error de máxima imprecisión. | Ídem. Frecuencia baja. |
+| `err_foot` | int64 | `0`, `0`, `0`... | Faltas de pie (foot fault) — el servidor pisó la línea de fondo antes de golpear. | Frecuencia casi nula en el dataset — raramente registrado por los chárters. Prácticamente descartable. |
+| `err_unknown` | int64 | `0`, `0`, `0`... | Errores de saque cuyo tipo no pudo determinarse. | Frecuencia nula en los datos observados. Descartable. |
+
+---
+
+## Lógica de los errores por tipo de `row`
+
+Este es el hallazgo más importante de la tabla y no estaba documentado previamente:
+
+```
+row = "1"  →  deuce_wide + deuce_middle + deuce_t
+              + ad_wide + ad_middle + ad_t  =  primeros saques dentro
+              err_*  =  todos 0  (las faltas de 1S no se registran aquí)
+
+row = "2"  →  deuce_wide + deuce_middle + deuce_t
+              + ad_wide + ad_middle + ad_t  =  segundos saques dentro
+              err_*  =  dobles faltas desglosadas por tipo de error
+
+row = "Total"  →  suma de ambos + todos los errores
+```
+
+Para calcular el **% de primer saque dentro** no se puede usar esta tabla directamente — hay que ir a ServeBasics (`pts` con `row = "1"` como denominador). ServeDirection solo cuenta los saques que **entraron**, no el total de intentos.
+
+---
+
+## Diagrama de zonas del cuadro de servicio
+
+```
+                    RED
+    ┌─────────────────────────────────────┐
+    │  LADO DEUCE (derecho)               │
+    │                                     │
+    │  [wide]   [middle]   [T]            │
+    │  ←ext      centro    →centro red    │
+    └─────────────────────────────────────┘
+    ┌─────────────────────────────────────┐
+    │  LADO AD (izquierdo)                │
+    │                                     │
+    │  [T]      [middle]   [wide]         │
+    │  →centro  centro     ←ext           │
+    └─────────────────────────────────────┘
+                 SERVIDOR
+```
+
+Para un jugador **diestro** (caso de Djokovic):
+- Deuce wide → backhand del rival diestro
+- Deuce T → forehand del rival diestro
+- Ad wide → forehand del rival diestro
+- Ad T → backhand del rival diestro
+
+---
+
+## Medidas DAX derivables de esta tabla
+
+```dax
+-- Frecuencia de dirección en primer saque (heatmap) [row = "1"]
+-- Denominador = total saques dentro en 1S
+
+Total saques dentro 1S =
+    SUM(deuce_wide) + SUM(deuce_middle) + SUM(deuce_t)
+    + SUM(ad_wide)  + SUM(ad_middle)   + SUM(ad_t)
+
+% Deuce Wide  1S = DIVIDE( SUM(deuce_wide),   [Total saques dentro 1S] )
+% Deuce T     1S = DIVIDE( SUM(deuce_t),      [Total saques dentro 1S] )
+% Ad Wide     1S = DIVIDE( SUM(ad_wide),      [Total saques dentro 1S] )
+% Ad T        1S = DIVIDE( SUM(ad_t),         [Total saques dentro 1S] )
+% Deuce Mid   1S = DIVIDE( SUM(deuce_middle), [Total saques dentro 1S] )
+% Ad Mid      1S = DIVIDE( SUM(ad_middle),    [Total saques dentro 1S] )
+
+-- Idem para segundo saque [row = "2"]
+
+-- Análisis de dobles faltas por tipo de error [row = "2"]
+Total DF =
+    SUM(err_net) + SUM(err_wide) + SUM(err_deep) + SUM(err_wide_deep)
+
+% DF por red      = DIVIDE( SUM(err_net),       [Total DF] )
+% DF largas       = DIVIDE( SUM(err_deep),       [Total DF] )
+% DF laterales    = DIVIDE( SUM(err_wide),       [Total DF] )
+% DF wide y larga = DIVIDE( SUM(err_wide_deep),  [Total DF] )
+```
+
+---
+
+## Hallazgos importantes
+
+**1. La zona central se llama `middle`, no `body`.**  
+El diccionario previo documentaba `body` como zona central. En ServeDirection la zona central geométrica del cuadro se llama `middle`. Son conceptos relacionados pero distintos.
+
+**2. Los errores de saque solo aparecen en `row = "2"` y `Total`.**  
+En `row = "1"` todos los campos `err_*` son 0. Las faltas de primer saque no se registran aquí — solo los saques que entraron. Las dobles faltas solo ocurren en segundo saque.
+
+**3. `err_foot` y `err_unknown` son prácticamente nulos.**  
+Pueden descartarse del modelo sin pérdida de información relevante.
+
+**4. Los 47 duplicados coinciden exactamente con los de ServeBasics.**  
+Son los mismos partidos — el problema de duplicados es a nivel de `match_id`, no de tabla individual. Hay que identificarlos y eliminarlos antes de modelar.
+
+**5. Esta tabla no permite calcular % de primer saque dentro.**  
+Solo registra saques que entraron, no el total de intentos. Para el denominador hay que cruzar con ServeBasics.
+
+---
+
+## Columnas recomendadas para el modelo Power BI
+
+| Columna | Acción recomendada |
+|---|---|
+| `match_id` | Mantener — clave de join |
+| `player` | Mantener — filtro de jugador por nombre |
+| `row` | Mantener — usar `1` y `2` por separado para el heatmap |
+| `deuce_wide` | Mantener — **heatmap saque** |
+| `deuce_middle` | Mantener — heatmap saque |
+| `deuce_t` | Mantener — **heatmap saque** |
+| `ad_wide` | Mantener — **heatmap saque** |
+| `ad_middle` | Mantener — heatmap saque |
+| `ad_t` | Mantener — **heatmap saque** |
+| `err_net` | Mantener — análisis de dobles faltas |
+| `err_wide` | Mantener — análisis de dobles faltas |
+| `err_deep` | Mantener — análisis de dobles faltas |
+| `err_wide_deep` | Mantener — análisis de dobles faltas |
+| `err_foot` | **Descartar** — frecuencia nula |
+| `err_unknown` | **Descartar** — frecuencia nula |
+
+---
+
+*Fuente: output de `dfs["serve_direction"].head(10)` y `dfs["serve_direction"].dtypes` ejecutados en `01_exploracion_inicial.ipynb`.*  
+*Datos: JeffSackmann/tennis_MatchChartingProject — CC BY-NC-SA 4.0*
+
+---
+---
+
