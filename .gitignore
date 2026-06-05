@@ -23,3 +23,5 @@ desktop.ini
 
 # Power BI temp files
 *.pbix.lock
+
+ignore/
